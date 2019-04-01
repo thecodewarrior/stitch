@@ -32,7 +32,8 @@ public class CommandMergeTiny extends Command {
 		ROOT,
 		CLASS,
 		FIELD,
-		METHOD;
+		METHOD,
+		VARIABLE;
 
 		private static Map<String, TinyEntryType> BY_NAME = new HashMap<>();
 
@@ -106,7 +107,9 @@ public class CommandMergeTiny extends Command {
 		public final int typeCount;
 
 		public TinyFile(File f) throws IOException {
+			int lineNum = 0;
 			BufferedReader reader = Files.newBufferedReader(f.toPath(), Charset.forName("UTF-8"));
+			lineNum++;
 			String[] header = reader.readLine().trim().split("\t");
 			if (header.length < 3 || !header[0].trim().equals("v1")) {
 				throw new RuntimeException("Invalid header!");
@@ -120,59 +123,67 @@ public class CommandMergeTiny extends Command {
 
 			String line;
 			while ((line = reader.readLine()) != null) {
-				line = line.trim();
-				if (line.length() == 0 || line.charAt(0) == '#') {
-					continue;
-				}
-
-				String[] parts = line.split("\t");
-				for (int i = 0; i < parts.length; i++) {
-					parts[i] = parts[i].trim();
-				}
-
-				StringBuilder prefix = new StringBuilder();
-				prefix.append(parts[0]);
-				for (int i = 1; i < parts.length - typeCount; i++) {
-					prefix.append('\t');
-					prefix.append(parts[i]);
-				}
-
-				String[] path = parts[1].split("\\$");
-				TinyEntry parent = root;
-				TinyEntryType type = TinyEntryType.byName(parts[0]);
-
-				for (int i = 0; i < (type == TinyEntryType.CLASS ? path.length - 1 : path.length); i++) {
-					TinyEntry nextParent = parent.getChild(indexList[0], path[i]);
-					if (nextParent == null) {
-						nextParent = new TinyEntry(TinyEntryType.CLASS, "CLASS");
-						nextParent.names.put(indexList[0], path[i]);
-						parent.addChild(nextParent, "");
+				lineNum++;
+				try {
+					line = line.trim();
+					if (line.length() == 0 || line.charAt(0) == '#') {
+						continue;
 					}
-					parent = nextParent;
-				}
 
-				TinyEntry entry;
-				if (type == TinyEntryType.CLASS && parent.containsChild(indexList[0], path[path.length - 1])) {
-					entry = parent.getChild(indexList[0], path[path.length - 1]);
-				} else {
-					entry = new TinyEntry(type, prefix.toString());
-				}
+					String[] parts = line.split("\t");
+					for (int i = 0; i < parts.length; i++) {
+						parts[i] = parts[i].trim();
+					}
 
-				String[] names = new String[typeCount];
-				for (int i = 0; i < typeCount; i++) {
-					names[i] = parts[parts.length - typeCount + i];
-					String[] splitly = names[i].split("\\$");
-					entry.names.put(indexList[i], splitly[splitly.length - 1]);
-				}
+					StringBuilder prefix = new StringBuilder();
+					prefix.append(parts[0]);
+					for (int i = 1; i < parts.length - typeCount; i++) {
+						prefix.append('\t');
+						prefix.append(parts[i]);
+					}
 
-				switch (type) {
-					case CLASS:
-						parent.addChild(entry, "");
-						break;
-					case FIELD:
-					case METHOD:
-						parent.addChild(entry, parts[2]);
-						break;
+					String[] path = parts[1].split("\\$");
+					TinyEntry parent = root;
+					TinyEntryType type = TinyEntryType.byName(parts[0]);
+
+					for (int i = 0; i < (type == TinyEntryType.CLASS ? path.length - 1 : path.length); i++) {
+						TinyEntry nextParent = parent.getChild(indexList[0], path[i]);
+						if (nextParent == null) {
+							nextParent = new TinyEntry(TinyEntryType.CLASS, "CLASS");
+							nextParent.names.put(indexList[0], path[i]);
+							parent.addChild(nextParent, "");
+						}
+						parent = nextParent;
+					}
+
+					TinyEntry entry;
+					if (type == TinyEntryType.CLASS && parent.containsChild(indexList[0], path[path.length - 1])) {
+						entry = parent.getChild(indexList[0], path[path.length - 1]);
+					} else {
+						entry = new TinyEntry(type, prefix.toString());
+					}
+
+					String[] names = new String[typeCount];
+					for (int i = 0; i < typeCount; i++) {
+						names[i] = parts[parts.length - typeCount + i];
+						String[] splitly = names[i].split("\\$");
+						entry.names.put(indexList[i], splitly[splitly.length - 1]);
+					}
+
+					switch (type) {
+						case CLASS:
+							parent.addChild(entry, "");
+							break;
+						case FIELD:
+						case METHOD:
+							parent.addChild(entry, parts[2]);
+							break;
+						case VARIABLE:
+							parent.addChild(entry, "#" + parts[3] + parts[2]);
+							break;
+					}
+				} catch(RuntimeException e) {
+					throw new RuntimeException("Error parsing line " + lineNum + " of file " + f, e);
 				}
 			}
 
